@@ -274,12 +274,13 @@ abstract class Component extends NameableByComponent with ContextUser with Scala
             nameable.setName(name, Nameable.DATAMODEL_WEAK)
             OwnableRef.proposal(ref, this)
           } else {
-            for (kind <- children) {
-              //Allow to name a component by his io reference into the parent component
-              if (kind.reflectIo == nameable) {
-                kind.setName(name, Nameable.DATAMODEL_WEAK)
-                OwnableRef.proposal(kind, this)
-              }
+            //Allow to name a component by his io reference into the parent component.
+            // The nameable belongs to a child component; check that child directly in O(1)
+            // instead of scanning all children (which would be O(N) per call → O(N²) total).
+            val candidateParent = nameable.asInstanceOf[ContextUser].component
+            if(candidateParent != null && candidateParent.parent == this && candidateParent.reflectIo == nameable) {
+              candidateParent.setName(name, Nameable.DATAMODEL_WEAK)
+              OwnableRef.proposal(candidateParent, this)
             }
           }
         case _ =>

@@ -98,20 +98,8 @@ abstract class ComponentEmitter {
     ret
   }
 
-  def isSubComponentInputBinded(data: BaseType) = {
-    var hasOtherUse = false
-    if(data.isInput && data.isComb && Statement.isFullToFullStatementOrLit(data)) {
-      data.component.parent.dslBody.foreachStatements{
-        case x: AssignmentStatement => {
-          if(x.source == data) {hasOtherUse = true}
-          x.source.walkExpression{
-            case x: BaseType => if(x == data) {hasOtherUse = true}
-            case _ =>
-          }
-        }
-        case _ =>
-      }
-    }
+  def isSubComponentInputBinded(data: BaseType, parentSources: mutable.HashSet[BaseType]) = {
+    val hasOtherUse = parentSources.contains(data)
     if(data.isInput && data.isComb && (if(hasOtherUse) Statement.isFullToFullStatement(data) else Statement.isFullToFullStatementOrLit(data))/* && data.head.asInstanceOf[AssignmentStatement].source.asInstanceOf[BaseType].component == data.component.parent*/)
       data.head.source
     else
@@ -379,6 +367,17 @@ abstract class ComponentEmitter {
 
     val interfaceWrapName = mutable.HashMap[String, String]()
     //Manage subcomponents input bindings
+    // Precompute all BaseType nodes that appear as expression sources in this component's
+    // top-level statements once, so isSubComponentInputBinded is O(1) per port instead of O(N).
+    val subBindingParentSources = mutable.HashSet[BaseType]()
+    component.dslBody.foreachStatements {
+      case x: AssignmentStatement =>
+        x.source.walkExpression {
+          case bt: BaseType => subBindingParentSources += bt
+          case _ =>
+        }
+      case _ =>
+    }
     for(sub <- component.children){
       for(io <- sub.getOrdredNodeIo) {
         //create subcomponents interface wrapper
@@ -411,7 +410,7 @@ abstract class ComponentEmitter {
             }
           }
         } else if(io.isInput) {
-          var subInputBinded = isSubComponentInputBinded(io)
+          var subInputBinded = isSubComponentInputBinded(io, subBindingParentSources)
 
           if(subInputBinded != null) {
             referencesOverrides(io) = subInputBinded
